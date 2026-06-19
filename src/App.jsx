@@ -237,6 +237,15 @@ const CSS = `
 .g-draw-btn:active { transform: translateY(0); }
 .g-draw-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
 
+.g-shuffle-btn {
+  width: 100%; padding: 13px; border-radius: 14px; margin-top: 10px;
+  border: 1.5px solid #D4C9FF; background: #F5F3FF;
+  color: #7C3AED; font-family: 'Nunito', sans-serif; font-size: 15px; font-weight: 800;
+  cursor: pointer; transition: all 0.2s;
+}
+.g-shuffle-btn:hover { border-color: #7C3AED; background: #EDE9FE; transform: translateY(-1px); }
+.g-shuffle-btn:active { transform: translateY(0); }
+
 .g-toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(12px); background: #fff; border: 2px solid #7C3AED; color: #7C3AED; padding: 10px 20px; border-radius: 40px; font-size: 13px; font-weight: 800; opacity: 0; transition: all 0.3s; pointer-events: none; white-space: nowrap; z-index: 100; box-shadow: 0 4px 16px rgba(124,58,237,0.18); }
 .g-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
@@ -407,6 +416,19 @@ export default function App() {
     return pending.reduce((m, s) => s.unlockAt < m.unlockAt ? s : m);
   };
 
+  const shuffleDeck = () => {
+    if (!gameState) return;
+    const allCards = [...gameState.pool, ...gameState.used];
+    // Fisher-Yates shuffle
+    for (let i = allCards.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [allCards[i], allCards[j]] = [allCards[j], allCards[i]];
+    }
+    setGameState(g => ({ ...g, pool: allCards, used: [], current: null }));
+    setFlipped(false);
+    showToast(`🔀 ${allCards.length} cards shuffled back in!`);
+  };
+
   // ── GAME VIEW ──────────────────────────────────────────────────────────────
   if (view === "game" && gameState) {
     const nu = nextUnlock();
@@ -446,12 +468,12 @@ export default function App() {
           )}
 
           <div className="g-card-area">
-            <div className={`g-card-wrap ${flipped ? "flipped" : ""}`} onClick={() => gameState.current && setFlipped(f => !f)}>
+            <div className={`g-card-wrap ${flipped ? "flipped" : ""}`} onClick={() => { if (gameState.pool.length) draw(); }}>
               <div className="g-card-face g-card-back">
                 <div className="g-card-back-inner">
                   <div className="g-card-deck-icon">🎴</div>
                   <div className="g-card-back-title">Dealbreaker</div>
-                  <div className="g-card-back-hint">{gameState.current ? "Tap to flip" : "Draw a card to start"}</div>
+                  <div className="g-card-back-hint">{gameState.pool.length ? (gameState.current ? "Tap for next card" : "Tap to draw") : "Deck is empty"}</div>
                 </div>
               </div>
               {meta && gameState.current && (
@@ -459,7 +481,6 @@ export default function App() {
                   <div className="g-card-cat-emoji">{meta.emoji}</div>
                   <div className="g-card-cat-label" style={{ color: meta.dark }}>{gameState.current.category}</div>
                   <div className="g-card-prompt" style={{ color: meta.dark }}>{gameState.current.text}</div>
-                  <div className="g-card-set-name" style={{ color: meta.dark }}>{gameState.current.sName}</div>
                 </div>
               )}
             </div>
@@ -474,6 +495,11 @@ export default function App() {
             <button className="g-draw-btn" onClick={draw} disabled={!gameState.pool.length}>
               {gameState.pool.length === 0 ? "Deck is empty!" : "Draw a card →"}
             </button>
+            {gameState.used.length > 0 && (
+              <button className="g-shuffle-btn" onClick={shuffleDeck}>
+                🔀 Shuffle played cards back in
+              </button>
+            )}
           </div>
         </div>
         <div className={`g-toast ${toast.show ? "show" : ""}`}>{toast.msg}</div>
