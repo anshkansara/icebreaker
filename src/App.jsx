@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 
 const CATEGORY_META = {
   Truth:      { emoji: "🔍", light: "#EEF4FF", dark: "#3B6FD4" },
@@ -76,6 +76,28 @@ function getDefaultPack() {
   }
 }
 const DEFAULT_PACK = getDefaultPack();
+
+// Auto-resizing textarea: grows to fit its content on mount, on edit, and
+// whenever its value changes (e.g. opening a set or importing a pack).
+function AutoTextarea({ value, onChange, placeholder, className }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      className={className}
+      rows={1}
+      value={value}
+      placeholder={placeholder}
+      onChange={onChange}
+    />
+  );
+}
 
 // ── dominant category for a set (used for set icon in list)
 function dominantCat(cards) {
@@ -228,8 +250,9 @@ const CSS = `
 .g-prompt-textarea {
   width: 100%; background: transparent; border: none;
   color: #1C1B2E; font-family: 'Nunito', sans-serif;
-  font-size: 13px; font-weight: 600; outline: none; resize: none;
-  line-height: 1.5; padding: 0;
+  font-size: 14px; font-weight: 600; outline: none; resize: none;
+  line-height: 1.55; padding: 0; display: block;
+  min-height: 44px; overflow: hidden;
 }
 
 .g-add-prompt {
@@ -383,7 +406,7 @@ export default function App() {
   const exportConfig = () => {
     const config = {
       version: 1,
-      name: packSource || "Dealbreaker Pack",
+      name: packSource || "icebreaker Pack",
       exportedAt: new Date().toISOString(),
       sets: cardSets,
     };
@@ -393,7 +416,7 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `dealbreaker-${Date.now()}.json`;
+      a.download = `icebreaker-${Date.now()}.json`;
       a.click();
       URL.revokeObjectURL(url);
       showToast("✅ Pack downloaded!");
@@ -420,7 +443,7 @@ export default function App() {
         setOpenSet(null);
         showToast(`✅ Loaded ${imported.length} set${imported.length !== 1 ? "s" : ""}!`);
       } catch {
-        showToast("❌ Couldn't read that file — is it a Dealbreaker JSON?");
+        showToast("❌ Couldn't read that file — is it a icebreaker JSON?");
       }
     };
     reader.readAsText(file);
@@ -550,7 +573,7 @@ export default function App() {
               <div className="g-card-face g-card-back">
                 <div className="g-card-back-inner">
                   <div className="g-card-deck-icon">🎴</div>
-                  <div className="g-card-back-title">Dealbreaker</div>
+                  <div className="g-card-back-title">icebreaker</div>
                   <div className="g-card-back-hint">{gameState.pool.length ? (gameState.current ? "Tap for next card" : "Tap to draw") : "Deck is empty"}</div>
                 </div>
               </div>
@@ -594,7 +617,7 @@ export default function App() {
       <style>{CSS}</style>
       <div className="g-setup">
         <div className="g-header">
-          <div className="g-title">🎴 Dealbreaker</div>
+          <div className="g-title">🎴 icebreaker</div>
           <div className="g-header-meta">{enabled.length} sets · {totalCards} cards</div>
         </div>
 
@@ -712,13 +735,11 @@ export default function App() {
                             </div>
                             {/* Text area */}
                             <div className="g-prompt-body" style={{ borderLeft: `3px solid ${cm.dark}` }}>
-                              <textarea
+                              <AutoTextarea
                                 className="g-prompt-textarea"
-                                rows={1}
                                 value={card.text}
                                 placeholder={`${card.category} prompt...`}
                                 onChange={e => updCard(set.id, card.id, { text: e.target.value })}
-                                onInput={e => { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }}
                               />
                             </div>
                           </div>
