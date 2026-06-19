@@ -38,6 +38,45 @@ function createDefaultSets() {
   ];
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// DEFAULT QUESTION SET
+// ---------------------------------------------------------------------------
+// Paste a full exported pack here — the exact JSON you get from the
+// "Export pack" button — replacing the PASTE_EXPORTED_PACK_HERE placeholder
+// between the backticks below. Then the "Use default set" button in the app
+// will load it. Leave the placeholder as-is to disable the default option.
+//
+// It accepts either a full export object ({ "name": ..., "sets": [...] })
+// or a bare array of sets. Avoid backticks (`) and ${ inside card text.
+// ═══════════════════════════════════════════════════════════════════════════
+const DEFAULT_PACK_JSON = `
+PASTE_EXPORTED_PACK_HERE
+`;
+
+// Regenerate all ids so loading a pack never collides with existing ids.
+function normalizeSets(sets) {
+  return sets.map(s => ({
+    ...s,
+    id: genId(),
+    cards: (s.cards || []).map(c => ({ ...c, id: genId() })),
+  }));
+}
+
+// Parse the hardcoded default pack once. Returns { name, sets } or null
+// if it's still the placeholder / unparseable / empty.
+function getDefaultPack() {
+  try {
+    const parsed = JSON.parse(DEFAULT_PACK_JSON);
+    const sets = Array.isArray(parsed) ? parsed : parsed.sets;
+    if (!Array.isArray(sets) || !sets.length) return null;
+    const name = (!Array.isArray(parsed) && parsed.name) ? parsed.name : "Default Set";
+    return { name, sets };
+  } catch {
+    return null;
+  }
+}
+const DEFAULT_PACK = getDefaultPack();
+
 // ── dominant category for a set (used for set icon in list)
 function dominantCat(cards) {
   const counts = {};
@@ -90,6 +129,29 @@ const CSS = `
 .g-io-btn:hover { border-color: #7C3AED; color: #7C3AED; background: #F5F3FF; }
 .g-io-btn.import { border-color: #C7D9FF; color: #3B6FD4; background: #EEF4FF; }
 .g-io-btn.import:hover { border-color: #3B6FD4; background: #E0ECFF; }
+.g-io-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.g-io-btn:disabled:hover { border-color: #E8E7F2; color: #555; background: #fff; }
+
+/* Use-default button (own row) */
+.g-default-bar { padding: 8px 16px 0; }
+.g-default-btn {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 11px 12px; border-radius: 10px; border: 1.5px solid #D4C9FF;
+  background: #F5F3FF; font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 800;
+  color: #7C3AED; cursor: pointer; transition: all 0.15s;
+}
+.g-default-btn:hover { border-color: #7C3AED; background: #EDE9FE; }
+.g-default-btn:disabled { opacity: 0.45; cursor: not-allowed; background: #F5F3FF; }
+
+/* Active-pack indicator */
+.g-pack-source {
+  margin: 12px 16px 0; display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 12px;
+  background: #fff; border: 1.5px solid #EBEBF5;
+}
+.g-pack-source-dot { width: 8px; height: 8px; border-radius: 50%; background: #7C3AED; flex-shrink: 0; }
+.g-pack-source-label { font-size: 11px; font-weight: 800; color: #BBB; text-transform: uppercase; letter-spacing: 0.8px; }
+.g-pack-source-name { font-size: 13px; font-weight: 800; color: #1C1B2E; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Set card */
 .g-set { margin: 0 16px 10px; background: #fff; border-radius: 16px; border: 1.5px solid #EBEBF5; overflow: hidden; transition: border-color 0.15s, box-shadow 0.15s; }
@@ -296,11 +358,19 @@ export default function App() {
   const [flipped, setFlipped] = useState(false);
   const [toast, setToast] = useState({ msg: "", show: false });
   const [exportModal, setExportModal] = useState(null);
+  const [packSource, setPackSource] = useState(() => {
+    try { return localStorage.getItem("pg-pack-source-v1") || "Starter deck"; }
+    catch { return "Starter deck"; }
+  });
   const toastRef = useRef(null);
 
   useEffect(() => {
     try { localStorage.setItem("pg-sets-v3", JSON.stringify(cardSets)); } catch {}
   }, [cardSets]);
+
+  useEffect(() => {
+    try { localStorage.setItem("pg-pack-source-v1", packSource); } catch {}
+  }, [packSource]);
 
   const showToast = (msg) => {
     setToast({ msg, show: true });
@@ -313,7 +383,7 @@ export default function App() {
   const exportConfig = () => {
     const config = {
       version: 1,
-      name: "Dealbreaker Pack",
+      name: packSource || "Dealbreaker Pack",
       exportedAt: new Date().toISOString(),
       sets: cardSets,
     };
@@ -343,13 +413,10 @@ export default function App() {
         // Accept either a full config object or a bare array of sets
         const sets = Array.isArray(parsed) ? parsed : parsed.sets;
         if (!Array.isArray(sets)) throw new Error("Invalid format");
-        // Re-generate IDs to avoid collisions, preserve everything else
-        const imported = sets.map(s => ({
-          ...s,
-          id: genId(),
-          cards: (s.cards || []).map(c => ({ ...c, id: genId() })),
-        }));
+        const imported = normalizeSets(sets);
+        const name = (!Array.isArray(parsed) && parsed.name) ? parsed.name : "Imported pack";
         setCardSets(imported);
+        setPackSource(name);
         setOpenSet(null);
         showToast(`✅ Loaded ${imported.length} set${imported.length !== 1 ? "s" : ""}!`);
       } catch {
@@ -358,6 +425,17 @@ export default function App() {
     };
     reader.readAsText(file);
     e.target.value = "";
+  };
+
+  const loadDefaultSet = () => {
+    if (!DEFAULT_PACK) {
+      showToast("⚠️ No default set configured yet");
+      return;
+    }
+    setCardSets(normalizeSets(DEFAULT_PACK.sets));
+    setPackSource(DEFAULT_PACK.name);
+    setOpenSet(null);
+    showToast(`✅ Loaded default set: ${DEFAULT_PACK.name}`);
   };
 
   const upd = (id, patch) => setCardSets(s => s.map(x => x.id === id ? { ...x, ...patch } : x));
@@ -527,6 +605,13 @@ export default function App() {
           <div className="g-how-step"><span>3️⃣</span><span>Sets with unlock &gt; 0 <b>join mid-game</b> for escalating intensity!</span></div>
         </div>
 
+        {/* Active set indicator */}
+        <div className="g-pack-source">
+          <span className="g-pack-source-dot" />
+          <span className="g-pack-source-label">Active set</span>
+          <span className="g-pack-source-name">{packSource}</span>
+        </div>
+
         {/* Import / Export */}
         <div className="g-io-bar">
           <button className="g-io-btn import" onClick={() => importRef.current?.click()}>
@@ -536,6 +621,13 @@ export default function App() {
             💾 Export pack
           </button>
           <input ref={importRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={importConfig} />
+        </div>
+
+        {/* Use default set */}
+        <div className="g-default-bar">
+          <button className="g-default-btn" onClick={loadDefaultSet} disabled={!DEFAULT_PACK}>
+            ⭐ {DEFAULT_PACK ? `Use default set${DEFAULT_PACK.name ? ` (${DEFAULT_PACK.name})` : ""}` : "No default set configured"}
+          </button>
         </div>
 
         <div className="g-section-head">
