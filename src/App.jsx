@@ -175,6 +175,19 @@ const CSS = `
 .g-pack-source-label { font-size: 11px; font-weight: 800; color: #BBB; text-transform: uppercase; letter-spacing: 0.8px; }
 .g-pack-source-name { font-size: 13px; font-weight: 800; color: #1C1B2E; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* Game options */
+.g-options { margin: 12px 16px 0; }
+.g-option-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px; border-radius: 12px; background: #fff;
+  border: 1.5px solid #EBEBF5; cursor: pointer; user-select: none;
+  transition: border-color 0.15s;
+}
+.g-option-row:hover { border-color: #D4C9FF; }
+.g-option-text { min-width: 0; }
+.g-option-title { font-size: 13px; font-weight: 800; color: #1C1B2E; }
+.g-option-sub { font-size: 11px; color: #999; font-weight: 600; margin-top: 2px; line-height: 1.35; }
+
 /* Set card */
 .g-set { margin: 0 16px 10px; background: #fff; border-radius: 16px; border: 1.5px solid #EBEBF5; overflow: hidden; transition: border-color 0.15s, box-shadow 0.15s; }
 .g-set:hover { border-color: #D4C9FF; }
@@ -385,6 +398,10 @@ export default function App() {
     try { return localStorage.getItem("pg-pack-source-v1") || "Starter deck"; }
     catch { return "Starter deck"; }
   });
+  const [hideNames, setHideNames] = useState(() => {
+    try { return localStorage.getItem("pg-hide-names-v1") === "1"; }
+    catch { return false; }
+  });
   const toastRef = useRef(null);
 
   useEffect(() => {
@@ -394,6 +411,10 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem("pg-pack-source-v1", packSource); } catch {}
   }, [packSource]);
+
+  useEffect(() => {
+    try { localStorage.setItem("pg-hide-names-v1", hideNames ? "1" : "0"); } catch {}
+  }, [hideNames]);
 
   const showToast = (msg) => {
     setToast({ msg, show: true });
@@ -503,7 +524,7 @@ export default function App() {
       newlyUnlocked.forEach(s => {
         s.cards.filter(c => c.text.trim()).forEach(c => finalPool.push({ ...c, sid: s.id, sName: s.name }));
         newUnlocked.push(s.id);
-        showToast(`🔓 "${s.name}" added to the pool!`);
+        showToast(hideNames ? `🔓 A new set unlocked!` : `🔓 "${s.name}" added to the pool!`);
       });
       setGameState(g => ({ ...g, pool: finalPool, used: [...g.used, card], pullCount: newCount, current: card, unlocked: newUnlocked }));
       setTimeout(() => setFlipped(true), 80);
@@ -535,6 +556,7 @@ export default function App() {
     const nu = nextUnlock();
     const progress = nu ? Math.min(100, (gameState.pullCount / nu.unlockAt) * 100) : 100;
     const activeSets = cardSets.filter(s => gameState.unlocked.includes(s.id));
+    const lockedSets = cardSets.filter(s => s.enabled && !gameState.unlocked.includes(s.id) && s.unlockAt > 0);
     const meta = gameState.current ? CATEGORY_META[gameState.current.category] || CATEGORY_META.Truth : null;
 
     return (
@@ -547,14 +569,14 @@ export default function App() {
           </div>
 
           <div className="g-active-sets">
-            {activeSets.map(s => (
+            {activeSets.map((s, i) => (
               <span key={s.id} className="g-set-pill" style={{ background: "#F5F3FF", color: "#7C3AED" }}>
-                📦 {s.name}
+                📦 {hideNames ? `Set ${i + 1}` : s.name}
               </span>
             ))}
-            {cardSets.filter(s => s.enabled && !gameState.unlocked.includes(s.id) && s.unlockAt > 0).map(s => (
+            {lockedSets.map(s => (
               <span key={s.id} className="g-set-pill" style={{ background: "#F5F5F5", color: "#AAA" }}>
-                🔒 {s.name} (at {s.unlockAt})
+                🔒 {hideNames ? `Hidden set (at ${s.unlockAt})` : `${s.name} (at ${s.unlockAt})`}
               </span>
             ))}
           </div>
@@ -562,7 +584,7 @@ export default function App() {
           {nu && (
             <div className="g-unlock-section">
               <div className="g-unlock-label">
-                <span>{nu.unlockAt - gameState.pullCount} more pulls</span> to unlock "{nu.name}"
+                <span>{nu.unlockAt - gameState.pullCount} more pulls</span> to unlock {hideNames ? "the next set" : `"${nu.name}"`}
               </div>
               <div className="g-progress"><div className="g-progress-fill" style={{ width: `${progress}%` }} /></div>
             </div>
@@ -633,6 +655,17 @@ export default function App() {
           <span className="g-pack-source-dot" />
           <span className="g-pack-source-label">Active set</span>
           <span className="g-pack-source-name">{packSource}</span>
+        </div>
+
+        {/* Game options */}
+        <div className="g-options">
+          <div className="g-option-row" onClick={() => setHideNames(v => !v)}>
+            <div className="g-option-text">
+              <div className="g-option-title">Hide set names during play</div>
+              <div className="g-option-sub">Players won't see set names or what's unlocking next — just "the next set".</div>
+            </div>
+            <div className={`g-toggle-track ${hideNames ? "on" : ""}`}><div className="g-toggle-thumb" /></div>
+          </div>
         </div>
 
         {/* Import / Export */}
