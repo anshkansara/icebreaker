@@ -406,7 +406,7 @@ export default function App() {
   const exportConfig = () => {
     const config = {
       version: 1,
-      name: packSource || "icebreaker Pack",
+      name: packSource || "Icebreaker Pack",
       exportedAt: new Date().toISOString(),
       sets: cardSets,
     };
@@ -443,7 +443,7 @@ export default function App() {
         setOpenSet(null);
         showToast(`✅ Loaded ${imported.length} set${imported.length !== 1 ? "s" : ""}!`);
       } catch {
-        showToast("❌ Couldn't read that file — is it a icebreaker JSON?");
+        showToast("❌ Couldn't read that file — is it an Icebreaker JSON?");
       }
     };
     reader.readAsText(file);
@@ -573,7 +573,7 @@ export default function App() {
               <div className="g-card-face g-card-back">
                 <div className="g-card-back-inner">
                   <div className="g-card-deck-icon">🎴</div>
-                  <div className="g-card-back-title">icebreaker</div>
+                  <div className="g-card-back-title">Icebreaker</div>
                   <div className="g-card-back-hint">{gameState.pool.length ? (gameState.current ? "Tap for next card" : "Tap to draw") : "Deck is empty"}</div>
                 </div>
               </div>
