@@ -617,7 +617,7 @@ export default function App() {
       <style>{CSS}</style>
       <div className="g-setup">
         <div className="g-header">
-          <div className="g-title">🎴 icebreaker</div>
+          <div className="g-title">🎴 Icebreaker</div>
           <div className="g-header-meta">{enabled.length} sets · {totalCards} cards</div>
         </div>
 
