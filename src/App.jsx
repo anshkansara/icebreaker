@@ -355,6 +355,32 @@ const CSS = `
 .g-shuffle-cat-top { font-size: 15px; line-height: 1; }
 .g-shuffle-cat-label { font-size: 11px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
+/* Add-set trigger pill (in the active-sets row) */
+.g-add-set-pill {
+  border: 1.5px dashed #C4B5FD; background: #fff; color: #7C3AED;
+  font-family: 'Nunito', sans-serif; cursor: pointer; transition: all 0.15s;
+}
+.g-add-set-pill:hover { background: #F5F3FF; border-color: #7C3AED; }
+
+/* Add-set sheet */
+.g-addset-empty {
+  font-size: 13px; font-weight: 600; color: #888; text-align: center;
+  padding: 22px 10px; background: #FAFAFA; border-radius: 12px; line-height: 1.5;
+}
+.g-addset-list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
+.g-addset-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 12px 14px; border-radius: 12px; border: 1.5px solid #EBEBF5;
+  background: #fff; font-family: 'Nunito', sans-serif; cursor: pointer; transition: all 0.15s;
+}
+.g-addset-item:hover { border-color: #7C3AED; background: #F5F3FF; }
+.g-addset-emoji { width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 19px; flex-shrink: 0; }
+.g-addset-info { flex: 1; min-width: 0; }
+.g-addset-name { font-size: 15px; font-weight: 800; color: #1C1B2E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-addset-sub { font-size: 12px; color: #999; font-weight: 600; margin-top: 1px; }
+.g-addset-chips { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.g-addset-plus { font-size: 20px; font-weight: 900; color: #7C3AED; flex-shrink: 0; }
+
 .g-toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(12px); background: #fff; border: 2px solid #7C3AED; color: #7C3AED; padding: 10px 20px; border-radius: 40px; font-size: 13px; font-weight: 800; opacity: 0; transition: all 0.3s; pointer-events: none; white-space: nowrap; z-index: 100; box-shadow: 0 4px 16px rgba(124,58,237,0.18); }
 .g-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
@@ -405,6 +431,7 @@ export default function App() {
   const [flipped, setFlipped] = useState(false);
   const [toast, setToast] = useState({ msg: "", show: false });
   const [exportModal, setExportModal] = useState(null);
+  const [addSetOpen, setAddSetOpen] = useState(false);
   const [packSource, setPackSource] = useState(() => {
     try { return localStorage.getItem("pg-pack-source-v1") || "Starter deck"; }
     catch { return "Starter deck"; }
@@ -579,6 +606,25 @@ export default function App() {
     showToast(`${m?.emoji || "🔀"} ${moving.length} ${cat}${moving.length !== 1 ? "s" : ""} shuffled back in!`);
   };
 
+  // Inject an existing-but-inactive set into the live pool right now.
+  // Works for both locked (unlockAt > 0, not yet reached) and disabled sets —
+  // a manual add overrides both. Marking it unlocked stops the auto-unlock
+  // check from adding it a second time. pullCount/progress are untouched.
+  const injectSet = (set) => {
+    if (!gameState) return;
+    if (gameState.unlocked.includes(set.id)) { showToast("That set is already in play"); return; }
+    const cards = set.cards.filter(c => c.text.trim());
+    if (!cards.length) { showToast("That set has no cards"); return; }
+    const inject = cards.map(c => ({ ...c, sid: set.id, sName: set.name }));
+    setGameState(g => ({
+      ...g,
+      pool: [...g.pool, ...inject],
+      unlocked: [...g.unlocked, set.id],
+    }));
+    setAddSetOpen(false);
+    showToast(hideNames ? `🔓 A new set added!` : `🔓 "${set.name}" added to the pool!`);
+  };
+
   // ── GAME VIEW ──────────────────────────────────────────────────────────────
   if (view === "game" && gameState) {
     const nu = nextUnlock();
@@ -591,6 +637,11 @@ export default function App() {
     const playedByCat = {};
     gameState.used.forEach(c => { playedByCat[c.category] = (playedByCat[c.category] || 0) + 1; });
     const shuffleable = SHUFFLE_CATEGORIES.filter(cat => playedByCat[cat] > 0);
+
+    // Sets that exist but aren't in play yet (locked-not-reached OR disabled) and have cards.
+    const addableSets = cardSets.filter(s =>
+      !gameState.unlocked.includes(s.id) && s.cards.some(c => c.text.trim())
+    );
 
     return (
       <div className="g-app">
@@ -612,6 +663,9 @@ export default function App() {
                 🔒 {hideNames ? `Hidden set (at ${s.unlockAt})` : `${s.name} (at ${s.unlockAt})`}
               </span>
             ))}
+            <button className="g-set-pill g-add-set-pill" onClick={() => setAddSetOpen(true)}>
+              ➕ Add set
+            </button>
           </div>
 
           {nu && (
@@ -685,6 +739,45 @@ export default function App() {
             )}
           </div>
         </div>
+
+        {addSetOpen && (
+          <div className="g-modal-backdrop" onClick={() => setAddSetOpen(false)}>
+            <div className="g-modal" onClick={e => e.stopPropagation()}>
+              <div className="g-modal-title">➕ Add a set to the game</div>
+              <div className="g-modal-sub">Drops every prompt from the set straight into the live deck. Unlock progress stays put.</div>
+              {addableSets.length === 0 ? (
+                <div className="g-addset-empty">All your sets are already in play. Head to ← Setup to build a new one.</div>
+              ) : (
+                <div className="g-addset-list">
+                  {addableSets.map(set => {
+                    const validCards = set.cards.filter(c => c.text.trim());
+                    const dc = dominantCat(set.cards);
+                    const dcMeta = CATEGORY_META[dc];
+                    const catCounts = {};
+                    validCards.forEach(c => { catCounts[c.category] = (catCounts[c.category] || 0) + 1; });
+                    const catSummary = Object.entries(catCounts).map(([k, v]) => `${CATEGORY_META[k]?.emoji || "✨"} ${v}`).join("  ");
+                    return (
+                      <button key={set.id} className="g-addset-item" onClick={() => injectSet(set)}>
+                        <div className="g-addset-emoji" style={{ background: dcMeta?.light || "#F5F3FF" }}>{dcMeta?.emoji || "📦"}</div>
+                        <div className="g-addset-info">
+                          <div className="g-addset-name">{hideNames ? "Hidden set" : set.name}</div>
+                          <div className="g-addset-sub">{validCards.length} card{validCards.length !== 1 ? "s" : ""}{catSummary ? `  ·  ${catSummary}` : ""}</div>
+                        </div>
+                        <div className="g-addset-chips">
+                          {set.unlockAt > 0 && <span className="g-chip g-chip-lock">🔒 at {set.unlockAt}</span>}
+                          {!set.enabled && <span className="g-chip g-chip-off">Off</span>}
+                        </div>
+                        <span className="g-addset-plus">＋</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <button className="g-modal-close" onClick={() => setAddSetOpen(false)}>Close</button>
+            </div>
+          </div>
+        )}
+
         <div className={`g-toast ${toast.show ? "show" : ""}`}>{toast.msg}</div>
       </div>
     );
