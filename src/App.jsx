@@ -9,6 +9,10 @@ const CATEGORY_META = {
 };
 const CATEGORIES = Object.keys(CATEGORY_META);
 
+// Categories that get a dedicated "shuffle these back in" button in-game.
+// Deliberately excludes Truth and Wildcard.
+const SHUFFLE_CATEGORIES = ["Punishment", "Dare", "Action"];
+
 function genId() { return Math.random().toString(36).slice(2, 9); }
 
 function makeCard(cat = "Truth", text = "") {
@@ -335,14 +339,21 @@ const CSS = `
 .g-draw-btn:active { transform: translateY(0); }
 .g-draw-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
 
-.g-shuffle-btn {
-  width: 100%; padding: 13px; border-radius: 14px; margin-top: 10px;
-  border: 1.5px solid #D4C9FF; background: #F5F3FF;
-  color: #7C3AED; font-family: 'Nunito', sans-serif; font-size: 15px; font-weight: 800;
+.g-played-breakdown { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.g-pb-chip { font-size: 11px; font-weight: 800; padding: 5px 11px; border-radius: 20px; white-space: nowrap; }
+
+.g-shuffle-row { display: flex; gap: 8px; margin-top: 10px; }
+.g-shuffle-cat {
+  flex: 1; min-width: 0; padding: 11px 6px; border-radius: 14px;
+  border: 1.5px solid var(--sh-dark); background: var(--sh-light);
+  color: var(--sh-dark); font-family: 'Nunito', sans-serif;
   cursor: pointer; transition: all 0.2s;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
-.g-shuffle-btn:hover { border-color: #7C3AED; background: #EDE9FE; transform: translateY(-1px); }
-.g-shuffle-btn:active { transform: translateY(0); }
+.g-shuffle-cat:hover { transform: translateY(-1px); filter: brightness(0.97); }
+.g-shuffle-cat:active { transform: translateY(0); }
+.g-shuffle-cat-top { font-size: 15px; line-height: 1; }
+.g-shuffle-cat-label { font-size: 11px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
 .g-toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(12px); background: #fff; border: 2px solid #7C3AED; color: #7C3AED; padding: 10px 20px; border-radius: 40px; font-size: 13px; font-weight: 800; opacity: 0; transition: all 0.3s; pointer-events: none; white-space: nowrap; z-index: 100; box-shadow: 0 4px 16px rgba(124,58,237,0.18); }
 .g-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -538,17 +549,34 @@ export default function App() {
     return pending.reduce((m, s) => s.unlockAt < m.unlockAt ? s : m);
   };
 
-  const shuffleDeck = () => {
+  // Shuffle ONLY the played cards of one category back into the pool.
+  // Other played cards stay in `used`. pullCount/unlocked are untouched so
+  // mid-game unlock progress is preserved (same contract as the old shuffle).
+  const shuffleCategory = (cat) => {
     if (!gameState) return;
-    const allCards = [...gameState.pool, ...gameState.used];
-    // Fisher-Yates shuffle
-    for (let i = allCards.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [allCards[i], allCards[j]] = [allCards[j], allCards[i]];
+    const moving = gameState.used.filter(c => c.category === cat);
+    if (!moving.length) {
+      showToast(`Nothing played in ${cat} yet`);
+      return;
     }
-    setGameState(g => ({ ...g, pool: allCards, used: [], current: null }));
-    setFlipped(false);
-    showToast(`🔀 ${allCards.length} cards shuffled back in!`);
+    const remainingUsed = gameState.used.filter(c => c.category !== cat);
+    const newPool = [...gameState.pool, ...moving];
+    // Fisher-Yates shuffle
+    for (let i = newPool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newPool[i], newPool[j]] = [newPool[j], newPool[i]];
+    }
+    // If the currently shown card is one we just moved back, clear the face.
+    const currentMoved = gameState.current && gameState.current.category === cat;
+    setGameState(g => ({
+      ...g,
+      pool: newPool,
+      used: remainingUsed,
+      current: currentMoved ? null : g.current,
+    }));
+    if (currentMoved) setFlipped(false);
+    const m = CATEGORY_META[cat];
+    showToast(`${m?.emoji || "🔀"} ${moving.length} ${cat}${moving.length !== 1 ? "s" : ""} shuffled back in!`);
   };
 
   // ── GAME VIEW ──────────────────────────────────────────────────────────────
@@ -558,6 +586,11 @@ export default function App() {
     const activeSets = cardSets.filter(s => gameState.unlocked.includes(s.id));
     const lockedSets = cardSets.filter(s => s.enabled && !gameState.unlocked.includes(s.id) && s.unlockAt > 0);
     const meta = gameState.current ? CATEGORY_META[gameState.current.category] || CATEGORY_META.Truth : null;
+
+    // Breakdown of played cards by category (drives the stats strip + shuffle buttons)
+    const playedByCat = {};
+    gameState.used.forEach(c => { playedByCat[c.category] = (playedByCat[c.category] || 0) + 1; });
+    const shuffleable = SHUFFLE_CATEGORIES.filter(cat => playedByCat[cat] > 0);
 
     return (
       <div className="g-app">
@@ -615,13 +648,40 @@ export default function App() {
               <div className="g-stat"><div className="g-stat-num">{gameState.used.length}</div><div className="g-stat-label">Played</div></div>
               <div className="g-stat"><div className="g-stat-num">{activeSets.length}</div><div className="g-stat-label">Active sets</div></div>
             </div>
+
+            {gameState.used.length > 0 && (
+              <div className="g-played-breakdown">
+                {CATEGORIES.filter(cat => playedByCat[cat]).map(cat => {
+                  const m = CATEGORY_META[cat];
+                  return (
+                    <span key={cat} className="g-pb-chip" style={{ background: m.light, color: m.dark }}>
+                      {m.emoji} {playedByCat[cat]} {cat}{playedByCat[cat] !== 1 ? "s" : ""}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
             <button className="g-draw-btn" onClick={draw} disabled={!gameState.pool.length}>
               {gameState.pool.length === 0 ? "Deck is empty!" : "Draw a card →"}
             </button>
-            {gameState.used.length > 0 && (
-              <button className="g-shuffle-btn" onClick={shuffleDeck}>
-                🔀 Shuffle played cards back in
-              </button>
+            {shuffleable.length > 0 && (
+              <div className="g-shuffle-row">
+                {shuffleable.map(cat => {
+                  const m = CATEGORY_META[cat];
+                  return (
+                    <button
+                      key={cat}
+                      className="g-shuffle-cat"
+                      style={{ "--sh-light": m.light, "--sh-dark": m.dark }}
+                      onClick={() => shuffleCategory(cat)}
+                    >
+                      <span className="g-shuffle-cat-top">🔀 {m.emoji}</span>
+                      <span className="g-shuffle-cat-label">{cat}s · {playedByCat[cat]}</span>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
